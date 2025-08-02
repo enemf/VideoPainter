@@ -41,3 +41,5 @@ safetensors==0.4.3
 huggingface_hub==0.24.1
 av==13.1.0
 gdown
+fastapi==0.111.0
+uvicorn[standard]
