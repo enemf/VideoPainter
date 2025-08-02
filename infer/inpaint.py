@@ -224,6 +224,9 @@ def generate_video(
     long_video: bool = False,
     dilate_size: int = -1,
     id_adapter_resample_learnable_path: str = None,
+    output_fps: int = 8,
+    height: int = None,
+    width: int = None,
 ):
     """
     Generates a video based on the given prompt and saves it to the specified path.
@@ -251,6 +254,9 @@ def generate_video(
     - replace_gt (bool): Whether to replace the ground truth.
     - mask_add (bool): Whether to add the mask.
     - down_sample_fps (int): The down sample fps.
+    - output_fps (int): FPS for the exported video.
+    - height (int): Inference height. Defaults to input frame height if None.
+    - width (int): Inference width. Defaults to input frame width if None.
     """
 
     image = None
@@ -435,6 +441,8 @@ def generate_video(
         inpaint_outputs = pipe(
             prompt=prompt,
             image=image,
+            height=height or image.size[1],
+            width=width or image.size[0],
             num_videos_per_prompt=num_videos_per_prompt,
             num_inference_steps=num_inference_steps,
             num_frames=frames,
@@ -455,7 +463,7 @@ def generate_video(
         binary_masks[0] = gt_mask_first_frame
         video[0] = gt_video_first_frame
         round_video = _visualize_video(pipe, mask_background, video[:len(video_generate)], video_generate, binary_masks[:len(video_generate)])
-        export_to_video(round_video, output_path.replace(".mp4", f"_fps{down_sample_fps}.mp4"), fps=8)
+        export_to_video(round_video, output_path.replace(".mp4", f"_fps{down_sample_fps}.mp4"), fps=output_fps)
 
     else:
         raise NotImplementedError
@@ -561,6 +569,24 @@ if __name__ == "__main__":
         help="The dilate size for the mask. Default is -1.",
     )
     parser.add_argument(
+        "--output_fps",
+        type=int,
+        default=8,
+        help="FPS for the saved video. Default is 8.",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=None,
+        help="Inference height. Defaults to input video height.",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        help="Inference width. Defaults to input video width.",
+    )
+    parser.add_argument(
         "--id_adapter_resample_learnable_path",
         type=str,
         default=None,
@@ -598,4 +624,7 @@ if __name__ == "__main__":
         long_video=args.long_video,
         dilate_size=args.dilate_size,
         id_adapter_resample_learnable_path=args.id_adapter_resample_learnable_path,
+        output_fps=args.output_fps,
+        height=args.height,
+        width=args.width,
     )
