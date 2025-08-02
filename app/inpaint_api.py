@@ -1,6 +1,10 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
-from diffusers import CogVideoXI2VDualInpaintAnyLPipeline
+from diffusers import (
+    CogVideoXI2VDualInpaintAnyLPipeline,
+    CogvideoXBranchModel,
+    CogVideoXTransformer3DModel,
+)
 from diffusers.utils import load_video, export_to_video
 import torch
 import tempfile
@@ -8,9 +12,40 @@ import os
 
 app = FastAPI()
 
-# Load model once at startup
-pipe = CogVideoXI2VDualInpaintAnyLPipeline.from_pretrained("THUDM/CogVideoX-5b")
-pipe.to("cuda" if torch.cuda.is_available() else "cpu")
+# Load model once at startup. Allow overriding component paths via environment
+# variables so preinstalled weights can be used without re-downloading from
+# Hugging Face.
+MODEL_PATH = os.getenv("INPAINT_MODEL_PATH", "THUDM/CogVideoX-5b")
+BRANCH_PATH = os.getenv("INPAINT_BRANCH_PATH")
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
+
+if BRANCH_PATH:
+    # Load a separately saved inpainting branch if provided.
+    branch = CogvideoXBranchModel.from_pretrained(
+        BRANCH_PATH, torch_dtype=DTYPE
+    ).to(DEVICE, dtype=DTYPE)
+    pipe = CogVideoXI2VDualInpaintAnyLPipeline.from_pretrained(
+        MODEL_PATH, branch=branch, torch_dtype=DTYPE
+    )
+else:
+    # Otherwise construct a default branch from the base transformer.
+    transformer = CogVideoXTransformer3DModel.from_pretrained(
+        MODEL_PATH, subfolder="transformer", torch_dtype=DTYPE
+    ).to(DEVICE, dtype=DTYPE)
+    branch = CogvideoXBranchModel.from_transformer(
+        transformer=transformer,
+        num_layers=1,
+        attention_head_dim=transformer.config.attention_head_dim,
+        num_attention_heads=transformer.config.num_attention_heads,
+        load_weights_from_transformer=True,
+    ).to(DEVICE, dtype=DTYPE)
+    pipe = CogVideoXI2VDualInpaintAnyLPipeline.from_pretrained(
+        MODEL_PATH, branch=branch, transformer=transformer, torch_dtype=DTYPE
+    )
+
+pipe.to(DEVICE)
 
 @app.post("/inpaint")
 async def inpaint(
